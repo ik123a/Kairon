@@ -14,7 +14,6 @@ the *causal preconditions* that made a cached result correct are still true.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -41,11 +40,22 @@ class CausalRouter:
         semantic_threshold: float = 0.80,
         causal_threshold: float = 0.55,
         confidence_floor: float = 0.30,
+        embedding_engine=None,
     ):
-        self.cache = SemanticCache(
-            embedding_dim=embedding_dim,
-            similarity_threshold=semantic_threshold,
-        )
+        # Pluggable embedding engine — defaults to HashEmbedding for MVP/testing
+        if embedding_engine is None:
+            from .embedding import HashEmbedding
+            self._embed_engine = HashEmbedding(dim=embedding_dim)
+            self.cache = SemanticCache(
+                embedding_dim=embedding_dim,
+                similarity_threshold=semantic_threshold,
+            )
+        else:
+            self._embed_engine = embedding_engine
+            self.cache = SemanticCache(
+                embedding_dim=embedding_engine.dimension,
+                similarity_threshold=semantic_threshold,
+            )
         self.graph = CausalGraph()
         self.causal_threshold = causal_threshold
         self.confidence_floor = confidence_floor
@@ -89,7 +99,7 @@ class CausalRouter:
         6. If miss: return MISS (caller should recompute and insert)
         """
         if embedding is None:
-            embedding = self._default_embedding(query_text)
+            embedding = self._embed_text(query_text)
 
         # Step 1-2: Try semantic cache
         entry, tier = self.cache.get(query_text, embedding)
@@ -151,7 +161,7 @@ class CausalRouter:
         """Insert a cached response with its causal fingerprint."""
         fingerprint = CausalFingerprint.from_preconditions(preconditions, causal_factors)
         if embedding is None:
-            embedding = self._default_embedding(query)
+            embedding = self._embed_text(query)
 
         entry = CachedEntry(
             query_text=query,
@@ -303,17 +313,9 @@ class CausalRouter:
     def _miss_result(self, reason: str) -> RouteResult:
         return RouteResult.miss_result(reason)
 
-    def _default_embedding(self, text: str) -> np.ndarray:
-        """
-        Default embedding: hash-based deterministic embedding.
-        In production: replace with SentenceTransformer or API call.
-        """
-        h = hashlib.sha256(text.encode()).digest()
-        seed = int.from_bytes(h[:4], "big")
-        rng = np.random.RandomState(seed)
-        vec = rng.randn(self.cache.embedding_dim).astype(np.float32)
-        vec = vec / np.linalg.norm(vec)
-        return vec
+    def _embed_text(self, text: str) -> np.ndarray:
+        """Compute embedding for text using injected engine (real semantic or hash fallback)."""
+        return self._embed_engine.embed(text)
 
     def _all_entries(self):
         """Walk all L2 entries (for L3 fallback)."""

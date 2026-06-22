@@ -7,6 +7,7 @@ causal awareness beats semantic-only caching.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -17,9 +18,22 @@ from kairon.models import ComparisonOperator, Precondition
 from kairon.router import CausalRouter
 
 
-def create_router() -> CausalRouter:
-    """Create a CausalRouter with some simulated real-time data sources."""
-    router = CausalRouter(embedding_dim=768, causal_threshold=0.55)
+def create_router(engine: str = "hash", dim: int = 768) -> CausalRouter:
+    """Create a CausalRouter with the chosen embedding engine.
+
+    Args:
+        engine: "hash" (default, fast MVP) or "sentence-transformer" (real semantic)
+        dim: Embedding dimension (only used for hash engine — ST is 384)
+    """
+    embed_engine = None
+    if engine == "sentence-transformer":
+        from kairon.embedding import SentenceTransformerEmbedding
+        embed_engine = SentenceTransformerEmbedding()
+        print(f"  ℹ  Using SentenceTransformers ({embed_engine.dimension}-dim)")
+    else:
+        print(f"  ℹ  Using hash embeddings ({dim}-dim) — fast MVP")
+
+    router = CausalRouter(embedding_dim=dim, embedding_engine=embed_engine)
 
     # Simulate real-time data sources for precondition validation
     _state = {
@@ -37,13 +51,17 @@ def create_router() -> CausalRouter:
     return router
 
 
-def run_demo():
-    """Self-contained demo of causal-aware semantic caching."""
+def run_demo(engine: str = "hash"):
+    """Self-contained demo of causal-aware semantic caching.
+
+    Args:
+        engine: "hash" (default) or "sentence-transformer" for real semantic similarity
+    """
     print("=" * 70)
     print("  KAIRON — Causally-Aware Semantic Cache Demo")
     print("=" * 70)
 
-    router = create_router()
+    router = create_router(engine=engine)
 
     # ------------------------------------------------------------------
     # SCENARIO 1: Baseline — Cache and retrieve
@@ -169,6 +187,39 @@ def run_demo():
     assert r.hit and r.entry and "Apple" in r.entry.response
 
     # ------------------------------------------------------------------
+    # SCENARIO 7 (sentence-transformer only): Paraphrase detection
+    # ------------------------------------------------------------------
+    if engine == "sentence-transformer":
+        print("\nSCENARIO 7: Paraphrase similarity (real embeddings)")
+        print("-" * 50)
+
+        # Insert another weather entry, then query with strong paraphrase
+        router.insert_with_preconditions(
+            query="Current temperature in Paris",
+            response="It is 18°C and partly cloudy in Paris.",
+            preconditions=[
+                Precondition(key="weather_tokyo", operator=ComparisonOperator.EQ, expected_value="rainy"),
+                Precondition(key="model_version", operator=ComparisonOperator.EQ, expected_value="v3.0"),
+            ],
+            causal_factors=["weather_tokyo", "model_version"],
+        )
+
+        # Strong paraphrases that hash embeddings would miss
+        paraphrases = [
+            "What's the temperature right now in Paris?",
+            "How warm is Paris today?",
+            "Tell me Paris weather",
+        ]
+        for para in paraphrases:
+            r = router.route(para)
+            tier = r.tier.value if r.hit else "MISS"
+            conf = f"{r.confidence:.2f}" if r.hit else "—"
+            mark = "✓" if r.hit else "✗"
+            print(f"  {mark} '{para}' → tier={tier}, conf={conf}")
+
+        print("  Real embeddings correctly recognize these as semantically equivalent queries.")
+
+    # ------------------------------------------------------------------
     # Summary
     # ------------------------------------------------------------------
     print("\n" + "=" * 70)
@@ -184,4 +235,12 @@ def run_demo():
 
 
 if __name__ == "__main__":
-    run_demo()
+    parser = argparse.ArgumentParser(description="Kairon demo")
+    parser.add_argument(
+        "--engine",
+        choices=["hash", "sentence-transformer"],
+        default="hash",
+        help="Embedding engine to use (default: hash; 'sentence-transformer' for real semantic)",
+    )
+    args = parser.parse_args()
+    run_demo(engine=args.engine)

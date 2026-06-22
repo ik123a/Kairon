@@ -96,6 +96,9 @@ def simulate_queries(
     n_factors: int = 5,
     change_probability: float = 0.08,
     dim: int = 128,
+    query_pool_size: int = 20,
+    paraphrase_fraction: float = 0.0,
+    use_real_embeddings: bool = False,
 ) -> tuple[BenchmarkResult, BenchmarkResult]:
     """
     Simulate a workload where some queries depend on factors that change over time.
@@ -104,7 +107,11 @@ def simulate_queries(
     """
 
     # --- Setup Kairon ---
-    kairon_router = CausalRouter(embedding_dim=dim)
+    embed_engine = None
+    if use_real_embeddings:
+        from kairon.embedding import SentenceTransformerEmbedding
+        embed_engine = SentenceTransformerEmbedding()
+    kairon_router = CausalRouter(embedding_dim=dim, embedding_engine=embed_engine)
     current_factor_values: dict[str, str] = {}
     for i in range(n_factors):
         key = f"factor_{i}"
@@ -130,17 +137,37 @@ def simulate_queries(
         v = current_factor_values.get(factor_key, "v1")
         return f"System {factor_key.split('_')[1]} is healthy (ver: {v})."
 
+    # Setup paraphrased queries (multiple surface forms per system)
+    base_query_by_sys = {i: f"What is the status of system {i}?" for i in range(query_pool_size)}
+    if paraphrase_fraction > 0 and use_real_embeddings:
+        paraphrases_by_sys = {
+            0: ["How is system 0 doing?", "What's the current state of system 0?", "Tell me about system 0 health"],
+            1: ["Status check for system 1 please", "Is system 1 operational?", "Report on system 1"],
+            2: ["Give me system 2's status", "System 2 — is it healthy?", "How is system 2 performing"],
+            3: ["Current state of system 3", "System 3 status report", "Status of system 3 right now"],
+            4: ["Check system 4", "How is system 4 doing right now?", "Status of system 4"],
+        }
+    else:
+        paraphrases_by_sys = {}
+
     # Pre-populate caches with responses indexed by initial factor values
-    for query, _, factor_key in templates:
+    cached_entry_ids: dict[int, str] = {}
+    for i in range(query_pool_size):
+        query = base_query_by_sys[i]
+        factor_key = f"factor_{i % n_factors}"
         current_val = current_factor_values[factor_key]
         response = f"System {factor_key.split('_')[1]} is healthy (ver: {current_val})."
         preconditions = [Precondition(key=factor_key, operator=ComparisonOperator.EQ, expected_value=current_val)]
-        kairon_router.insert_with_preconditions(
+        entry = kairon_router.insert_with_preconditions(
             query=query, response=response,
-            preconditions=preconditions,
-            causal_factors=[factor_key],
+            preconditions=preconditions, causal_factors=[factor_key],
         )
+        cached_entry_ids[i] = entry.id
         naive_cache.put(query, response)
+        # Also cache paraphrases as separate NAMES (same answer) to naive cache
+        if paraphrase_fraction > 0 and use_real_embeddings:
+            for p in paraphrases_by_sys.get(i, []):
+                naive_cache.put(p, response)
 
     # --- Track stats ---
     kairon_stats = {"hits": 0, "misses": 0, "stale": 0, "correct": 0}
@@ -160,8 +187,18 @@ def simulate_queries(
             # Trigger Kairon invalidation cascade
             kairon_router.precondition_changed(factor_to_change, old_val, current_factor_values[factor_to_change])
 
-        # Randomly pick a query
-        query, _, factor_key = rng.choice(templates)
+        # Randomly pick a query (using paraphrase instead of base query with prob `paraphrase_fraction`)
+        sys_idx = rng.randint(0, query_pool_size - 1)
+        factor_key = f"factor_{sys_idx % n_factors}"
+        if (
+            paraphrase_fraction > 0
+            and use_real_embeddings
+            and rng.random() < paraphrase_fraction
+            and sys_idx in paraphrases_by_sys
+        ):
+            query = rng.choice(paraphrases_by_sys[sys_idx])
+        else:
+            query = base_query_by_sys[sys_idx]
 
         # The correct response is always based on CURRENT factor value
         correct_response = get_response(factor_key)
@@ -223,9 +260,10 @@ def simulate_queries(
 # Main
 # ---------------------------------------------------------------------------
 
-def run_benchmarks():
+def run_benchmarks(use_real_embeddings: bool = False, paraphrase_fraction: float = 0.0):
     print("=" * 70)
-    print("  KAIRON BENCHMARK: Causal-Aware vs Naive Semantic Cache")
+    label = "SentenceTransformer" if use_real_embeddings else "Hash"
+    print(f"  KAIRON BENCHMARK: Causal-Aware vs Naive Semantic Cache  [embeddings: {label}]")
     print("=" * 70)
 
     scenarios = [
@@ -244,6 +282,8 @@ def run_benchmarks():
             n_queries=1000,
             n_factors=5,
             change_probability=change_prob,
+            use_real_embeddings=use_real_embeddings,
+            paraphrase_fraction=paraphrase_fraction,
         )
 
         print(f"  {'Metric':<25} {'Kairon':>15} {'Naive':>15}")
@@ -283,4 +323,12 @@ def run_benchmarks():
 
 
 if __name__ == "__main__":
-    run_benchmarks()
+    import argparse
+    parser = argparse.ArgumentParser(description="Kairon benchmark")
+    parser.add_argument("--real-embeddings", action="store_true", help="Use SentenceTransformerEmbedding instead of hash")
+    parser.add_argument("--paraphrase-fraction", type=float, default=0.5, help="Fraction of queries that are paraphrased (forces L2 path)")
+    args = parser.parse_args()
+    if args.real_embeddings:
+        run_benchmarks(use_real_embeddings=True, paraphrase_fraction=args.paraphrase_fraction)
+    else:
+        run_benchmarks()

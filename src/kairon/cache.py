@@ -19,6 +19,23 @@ import numpy as np
 from .models import CachedEntry, CacheTier
 
 
+def _token_overlap_ok(query: str, cached: str, threshold: float = 0.40) -> bool:
+    """Lightweight token-set Jaccard guard — used to reject L2 semantic hits
+    that match the wrong cached entry (e.g., paraphrased 'system 0 health'
+    matching the cached 'system 2 status' entry).
+
+    Threshold of 0.40 means: at least 40% of query tokens must appear in the cached query.
+    This filters out cross-system collisions while accepting rephrasings of the same query.
+    """
+    q_tokens = {t for t in query.lower().split() if len(t) > 1}
+    c_tokens = {t for t in cached.lower().split() if len(t) > 1}
+    if not q_tokens or not c_tokens:
+        return True  # Empty token set — can't judge, allow through
+    # Jaccard with recall bias: focus on what fraction of QUERY tokens are in cached
+    overlap = len(q_tokens & c_tokens) / max(1, len(q_tokens))
+    return overlap >= threshold
+
+
 class SemanticCache:
     """
     Two-tier semantic cache: L1 exact hash lookup + L2 FAISS vector similarity.
@@ -55,7 +72,7 @@ class SemanticCache:
     # ------------------------------------------------------------------
 
     def insert(self, entry: CachedEntry, embedding: np.ndarray | None = None):
-        """Insert a cached entry into both L1 and L2."""
+        """Insert a cached entry into both L1 and L2 (skipping duplicates)."""
         # If no embedding provided, use the entry's stored embedding
         if embedding is None and entry.query_embedding:
             embedding = np.array(entry.query_embedding, dtype=np.float32)
@@ -73,13 +90,23 @@ class SemanticCache:
         # Store embedding on entry
         entry.query_embedding = embedding.flatten().tolist()
 
-        # L1: exact hash key
+        # L1: exact hash key — always promote/update
         key = self._exact_key(entry.query_text)
         self._l1[key] = entry
         if len(self._l1) > self.l1_max_size:
             self._l1.popitem(last=False)  # LRU eviction
 
-        # L2: FAISS vector index
+        # L2: FAISS vector index — check for existing entry to avoid duplicates
+        existing_idx = None
+        for existing_idx_candidate, existing_entry in self._l2_entries.items():
+            if existing_entry.id == entry.id:
+                existing_idx = existing_idx_candidate
+                break
+        if existing_idx is not None:
+            # Already in L2 — only refresh the in-memory entry object (FAISS vector stays)
+            self._l2_entries[existing_idx] = entry
+            return
+
         idx = self._next_id
         self._next_id += 1
         faiss_id = np.array([idx], dtype=np.int64)
@@ -119,8 +146,12 @@ class SemanticCache:
                 if faiss_id == -1:  # Invalid result
                     continue
                 if score >= self.similarity_threshold:
-                    self._hit_count += 1
                     entry = self._l2_entries[faiss_id]
+                    # Token-overlap guard to avoid cross-system semantic collisions
+                    # (e.g., "Tell me about system 0" matching system 2's cached entry)
+                    if not _token_overlap_ok(query_text, entry.query_text, threshold=0.40):
+                        continue
+                    self._hit_count += 1
                     entry.record_access()
                     # Promote to L1
                     self._l1[self._exact_key(query_text)] = entry

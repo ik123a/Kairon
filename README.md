@@ -1,6 +1,21 @@
 # Kairon 🔮
 
-**A Causally-Aware Semantic Cache** that doesn't just store what happened — it understands *why* it happened, and uses that understanding to predict *when* it will become wrong.
+[![GitHub release](https://img.shields.io/github/v/release/ik123a/Kairon?include_prereleases)](https://github.com/ik123a/Kairon/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-30%2F30%20passing-brightgreen.svg)](tests/)
+[![Topics](https://img.shields.io/badge/topics-semantic--cache%20%7C%20causal--inference%20%7C%20RAG-blue.svg)](https://github.com/ik123a/Kairon)
+
+**A Causally-Aware Semantic Cache** that doesn't just store *what* happened — it understands *why* it happened, and uses that understanding to predict *when* it stored data will become wrong.
+
+---
+
+## What’s New in v0.2.0
+
+- 🎯 **Real semantic embeddings** — `SentenceTransformerEmbedding` is now plug-and-play via `--engine sentence-transformer`. Paraphrase detection: `"What is the weather in Tokyo?"` and `"Tell me about Tokyo weather conditions"` now match the same cached entry (semantic similarity 0.92).
+- 🛡️ **Token-overlap guard** — L2 semantic hits now require ≥40% token overlap with the cached query, eliminating cross-subject collisions (e.g., `"system 0 health"` no longer matches `"system 2 status"`).
+- 🐛 **Fixed duplicate L2 inserts** — entries promoted to L2 from cache hits are now deduplicated by `entry.id`, preventing FAISS vector fragmentation.
+- 📊 **`embedding_engine` injection** — `CausalRouter(embedding_engine=...)` accepts any custom embedding backend; sentence-transformers is the production-shaped default.
 
 ---
 
@@ -33,11 +48,16 @@ When a new query arrives, Kairon:
 # Install
 pip install -e .
 
-# Run the demo
+# Run the demo (hash embeddings, ~5 seconds)
 python examples/demo.py
 
+# Run the demo with REAL semantic embeddings (paraphrase detection, requires sentence-transformers)
+pip install sentence-transformers torch
+python examples/demo.py --engine sentence-transformer
+
 # Run benchmarks (Kairon vs naive semantic cache)
-python tests/test_benchmark.py
+python tests/test_benchmark.py                          # hash embeddings
+python tests/test_benchmark.py --real-embeddings        # sentence-transformer embeddings
 
 # Run unit tests
 pytest tests/test_core.py -v
@@ -211,9 +231,16 @@ kairon/
 - [ ] Federated causal learning
 - [ ] Multi-modal causal fingerprints
 
+## Known Limitations (v0.2.0 MVP)
+
+* **L2 semantic precision** — When two distinct subjects share many tokens ("system 0 status" vs "system 2 status"), L2 may match the wrong cached entry. v0.2.0 mitigates this with a ≥40% token-overlap guard; v0.3.0 will add cross-encoder reranking.
+* **In-memory state** — Both the semantic cache (FAISS) and causal graph (networkx) are in-memory. Reloading requires re-execution. Use LanceDB + Neo4j in production.
+* **Hash embeddings default** — Demo and tests default to hash embeddings (fast, deterministic). For real semantic similarity, install `sentence-transformers` and pass `--engine sentence-transformer`.
+* **Causal discovery is heuristic** — `CausalDiscoveryService` discovers correlations via co-occurrence, not statistical PC algorithm. Production should integrate DoWhy / causal-learn.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
 ---
 
