@@ -10,6 +10,15 @@
 
 ---
 
+## What’s New in v0.3.0
+
+- 🎯 **Cross-encoder reranker** — L2 semantic hits are now re-ranked by `cross-encoder/ms-marco-MiniLM-L-6-v2` (sentence-transformers). This eliminates cross-subject false positives that bi-encoder cosine similarity couldn't distinguish.
+- 📊 **PC algorithm causal discovery** — `CausalDiscoveryService.run_pc_algorithm()` is the real PC algorithm using partial correlation + Fisher-z test instead of the heuristic. Returns a structured skeleton graph + statistical significance per edge.
+- 🗄️ **Pluggable storage adapters** — New `kairon.storage` module with `VectorBackend` and `GraphBackend` interfaces. Built-in `InMemory*Backend` defaults; `LanceVectorBackend` and `Neo4jGraphBackend` adapters for production persistence.
+- 🧮 **SciPy integration** — PC test relies on `scipy.stats.pearsonr` for accurate partial correlation p-values.
+- 🔒 **Graceful degradation** — If `lancedb` / `neo4j` aren't installed, the corresponding adapters raise `RuntimeError` cleanly at use time (not at import).
+- 🔧 **Stub reranker** — Without `sentence-transformers`, the stub reranker uses entity-token overlap + prefix match (a clear improvement over vanilla bi-encoder).
+
 ## What’s New in v0.2.0
 
 - 🎯 **Real semantic embeddings** — `SentenceTransformerEmbedding` is now plug-and-play via `--engine sentence-transformer`. Paraphrase detection: `"What is the weather in Tokyo?"` and `"Tell me about Tokyo weather conditions"` now match the same cached entry (semantic similarity 0.92).
@@ -217,26 +226,32 @@ kairon/
 - [x] Core causal data models
 - [x] Semantic cache with FAISS (L1 + L2)
 - [x] Causal graph engine (networkx)
-- [x] Causal router with precondition validation
-- [x] Predictive invalidation (heuristic)
-- [x] Causal discovery service
-- [x] Pluggable embedding engines
-- [x] FastAPI REST server
-- [x] Benchmark suite
-- [ ] Rust core engine (tokio, tonic, lancedb)
-- [ ] Neo4j for persistent causal graphs
-- [ ] RL-based invalidation policy (PPO/SAC)
-- [ ] gRPC + Kafka streaming
-- [ ] Kubernetes + Istio deployment
-- [ ] Federated causal learning
-- [ ] Multi-modal causal fingerprints
+- [x] **v0.1.0** Causal router with precondition validation
+- [x] **v0.1.0** Predictive invalidation (heuristic)
+- [x] **v0.1.0** Causal discovery service
+- [x] **v0.1.0** Pluggable embedding engines
+- [x] **v0.1.0** FastAPI REST server
+- [x] **v0.1.0** Benchmark suite
+- [x] **v0.2.0** Real semantic embeddings (SentenceTransformer)
+- [x] **v0.2.0** Token-overlap guard for L2 semantic hits
+- [x] **v0.2.0** Duplicate-insert fix for FAISS vector fragmentation
+- [x] **v0.3.0** Cross-encoder reranker for L2 (precision boost)
+- [x] **v0.3.0** PC algorithm for statistical causal discovery
+- [x] **v0.3.0** Pluggable storage backends (LanceDB + Neo4j adapter scaffolds)
+- [ ] **v0.4.0** Rust core engine (tokio, tonic, lancedb)
+- [ ] **v0.4.0** Neo4j live integration tests
+- [ ] **v0.4.0** RL-based invalidation policy (PPO/SAC)
+- [ ] **v0.5.0** gRPC + Kafka streaming
+- [ ] **v0.6.0** Kubernetes + Istio deployment
+- [ ] **v0.7.0** Federated causal learning
+- [ ] **v0.8.0** Multi-modal causal fingerprints
 
-## Known Limitations (v0.2.0 MVP)
+## Known Limitations (v0.3.0)
 
-* **L2 semantic precision** — When two distinct subjects share many tokens ("system 0 status" vs "system 2 status"), L2 may match the wrong cached entry. v0.2.0 mitigates this with a ≥40% token-overlap guard; v0.3.0 will add cross-encoder reranking.
-* **In-memory state** — Both the semantic cache (FAISS) and causal graph (networkx) are in-memory. Reloading requires re-execution. Use LanceDB + Neo4j in production.
-* **Hash embeddings default** — Demo and tests default to hash embeddings (fast, deterministic). For real semantic similarity, install `sentence-transformers` and pass `--engine sentence-transformer`.
-* **Causal discovery is heuristic** — `CausalDiscoveryService` discovers correlations via co-occurrence, not statistical PC algorithm. Production should integrate DoWhy / causal-learn.
+* **L2 semantic precision** — Cross-encoder reranker reduces cross-subject false positives significantly, but extremely similar queries about different subjects can still match. v0.4.0 will add cross-encoder Top-K voting.
+* **In-memory state (default)** — Both the semantic cache (FAISS) and causal graph (networkx) are in-memory by default. Pluggable adapters provided for `LanceDB` (vector) and `Neo4j` (graph).
+* **Causal discovery heuristics** — In addition to the new PC algorithm, simpler heuristic discovery remains for low-data scenarios. Use heuristic with `n_observations < 50`; switch to PC at scale.
+* **Causal graph cross-system isolation** — Entries from different tenants should use disjoint causal factor namespaces.
 
 ## License
 

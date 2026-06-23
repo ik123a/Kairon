@@ -34,8 +34,23 @@ from .discovery import (
     CausalObservation,
     DiscoveredCausal,
 )
+from .reranker import (
+    CrossEncoderReranker,
+    CrossEncoderRerankerBackend,
+    create_reranker,
+)
+from .storage import (
+    VectorBackend,
+    GraphBackend,
+    InMemoryVectorBackend,
+    InMemoryGraphBackend,
+    LanceVectorBackend,
+    Neo4jGraphBackend,
+    create_vector_backend,
+    create_graph_backend,
+)
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __all__ = [
     "CachedEntry",
     "CacheTier",
@@ -58,4 +73,15 @@ __all__ = [
     "CausalDiscoveryService",
     "CausalObservation",
     "DiscoveredCausal",
+    "CrossEncoderReranker",
+    "CrossEncoderRerankerBackend",
+    "create_reranker",
+    "VectorBackend",
+    "GraphBackend",
+    "InMemoryVectorBackend",
+    "InMemoryGraphBackend",
+    "LanceVectorBackend",
+    "Neo4jGraphBackend",
+    "create_vector_backend",
+    "create_graph_backend",
 ]

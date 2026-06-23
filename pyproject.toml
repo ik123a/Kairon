@@ -1,6 +1,6 @@
 [project]
 name = "kairon"
-version = "0.2.0"
+version = "0.3.0"
 description = "Causally-Aware Semantic Cache: predictive invalidation via causal fingerprints"
 requires-python = ">=3.10"
 dependencies = [

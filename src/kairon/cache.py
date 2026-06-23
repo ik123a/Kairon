@@ -17,6 +17,7 @@ import faiss
 import numpy as np
 
 from .models import CachedEntry, CacheTier
+from .reranker import CrossEncoderRerankerBackend, create_reranker
 
 
 def _token_overlap_ok(query: str, cached: str, threshold: float = 0.40) -> bool:
@@ -49,11 +50,16 @@ class SemanticCache:
         l1_max_size: int = 1000,
         similarity_threshold: float = 0.80,
         adaptive_threshold: bool = True,
+        reranker: CrossEncoderRerankerBackend | None = None,
+        reranking_threshold: float = 0.25,
     ):
         self.embedding_dim = embedding_dim
         self.l1_max_size = l1_max_size
         self.similarity_threshold = similarity_threshold
         self.adaptive_threshold = adaptive_threshold
+        # Optional cross-encoder reranker for L2 precision (v0.3.0)
+        self.reranker = reranker if reranker is not None else create_reranker("stub")
+        self.reranking_threshold = reranking_threshold
 
         # L1: exact hash → entry (OrderedDict = LRU eviction)
         self._l1: OrderedDict[str, CachedEntry] = OrderedDict()
@@ -139,23 +145,32 @@ class SemanticCache:
         faiss.normalize_L2(embedding)
 
         if self._l2_index.ntotal > 0:
-            scores, ids = self._l2_index.search(embedding, k=5)  # top-5
+            scores, ids = self._l2_index.search(embedding, k=5)  # top-5 from FAISS
+            candidates: list[tuple[CachedEntry, float]] = []
             for i in range(len(ids[0])):
                 faiss_id = int(ids[0][i])
                 score = float(scores[0][i])
-                if faiss_id == -1:  # Invalid result
+                if faiss_id == -1:
                     continue
                 if score >= self.similarity_threshold:
                     entry = self._l2_entries[faiss_id]
-                    # Token-overlap guard to avoid cross-system semantic collisions
-                    # (e.g., "Tell me about system 0" matching system 2's cached entry)
-                    if not _token_overlap_ok(query_text, entry.query_text, threshold=0.40):
-                        continue
-                    self._hit_count += 1
-                    entry.record_access()
-                    # Promote to L1
-                    self._l1[self._exact_key(query_text)] = entry
-                    return entry, CacheTier.L2
+                    candidates.append((entry, score))
+
+            if candidates:
+                # Rerank with cross-encoder (or stub) — eliminates cross-subject false positives
+                cand_texts = [c.query_text for c, _ in candidates]
+                rerank_results = self.reranker.score_pairs(query_text, cand_texts)
+                # Sort by reranker score descending
+                rerank_results.sort(key=lambda r: r.score, reverse=True)
+                # Pick the first one that passes the reranking threshold
+                for r in rerank_results:
+                    if r.score >= self.reranking_threshold:
+                        entry, score = candidates[r.index]
+                        entry.record_access()
+                        # Promote to L1
+                        self._l1[self._exact_key(query_text)] = entry
+                        self._hit_count += 1
+                        return entry, CacheTier.L2
 
         self._miss_count += 1
         return None, CacheTier.MISS

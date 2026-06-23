@@ -41,20 +41,32 @@ class CausalRouter:
         causal_threshold: float = 0.55,
         confidence_floor: float = 0.30,
         embedding_engine=None,
+        use_cross_encoder: bool = True,
     ):
         # Pluggable embedding engine — defaults to HashEmbedding for MVP/testing
+        # Pluggable reranker — defaults to cross-encoder when sentence-transformers available
+        reranker = None
+        if use_cross_encoder:
+            try:
+                from .reranker import CrossEncoderReranker
+                reranker = CrossEncoderReranker()
+            except Exception:
+                pass
+
         if embedding_engine is None:
             from .embedding import HashEmbedding
             self._embed_engine = HashEmbedding(dim=embedding_dim)
             self.cache = SemanticCache(
                 embedding_dim=embedding_dim,
                 similarity_threshold=semantic_threshold,
+                reranker=reranker,
             )
         else:
             self._embed_engine = embedding_engine
             self.cache = SemanticCache(
                 embedding_dim=embedding_engine.dimension,
                 similarity_threshold=semantic_threshold,
+                reranker=reranker,
             )
         self.graph = CausalGraph()
         self.causal_threshold = causal_threshold
