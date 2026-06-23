@@ -1,7 +1,25 @@
 [project]
-name = "kairon"
-version = "0.3.0"
-description = "Causally-Aware Semantic Cache: predictive invalidation via causal fingerprints"
+name = "kairon-cache"
+version = "0.4.0"
+description = "Causally-aware semantic cache: deductive invalidation via causal fingerprints. Drop-in for LLM/RAG retrieval layers."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "ik123a", email = "ishaanka111@gmail.com"},
+]
+keywords = ["semantic-cache", "causal-inference", "rag", "llm-infrastructure", "embedding", "cache-invalidation", "predictive-caching"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
@@ -22,6 +40,21 @@ embeddings = [
     "sentence-transformers>=3.0",
     "torch>=2.0",
 ]
+vector-backends = [
+    "lancedb>=0.21",
+]
+graph-backends = [
+    "neo4j>=5.20",
+]
+all = [
+    "kairon-cache[embeddings,vector-backends,graph-backends]",
+]
+
+[project.urls]
+Homepage = "https://github.com/ik123a/Kairon"
+Repository = "https://github.com/ik123a/Kairon"
+Issues = "https://github.com/ik123a/Kairon/issues"
+# Changelog = "https://github.com/ik123a/Kairon/releases"
 
 [build-system]
 requires = ["setuptools>=75"]
@@ -29,3 +62,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"kairon" = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
