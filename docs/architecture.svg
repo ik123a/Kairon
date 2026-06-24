@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif">
+  <!-- Background -->
+  <rect width="1400" height="900" fill="#0d1117"/>
+
+  <!-- Title -->
+  <text x="40" y="50" font-size="32" font-weight="700" fill="#e6edf3">Kairon v0.5.0 — Causally-Aware Semantic Cache</text>
+  <text x="40" y="80" font-size="14" fill="#8b949e">Causal Fingerprint · Predictive Invalidation · Cross-Encoder Reranking</text>
+
+  <!-- ============================== -->
+  <!--   LAYER 1: CLIENT / API GATEWAY -->
+  <!-- ============================== -->
+  <text x="40" y="130" font-size="13" font-weight="700" fill="#58a6ff" letter-spacing="1">① CLIENT LAYER</text>
+
+  <rect x="40" y="140" width="160" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="120" y="167" text-anchor="middle" font-size="13" fill="#e6edf3" font-weight="600">RAG / LLM App</text>
+  <text x="120" y="185" text-anchor="middle" font-size="11" fill="#8b949e">LangChain / LlamaIndex</text>
+
+  <rect x="220" y="140" width="160" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="300" y="167" text-anchor="middle" font-size="13" fill="#e6edf3" font-weight="600">REST / gRPC</text>
+  <text x="300" y="185" text-anchor="middle" font-size="11" fill="#8b949e">/query /insert /invalidate</text>
+
+  <rect x="400" y="140" width="160" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="480" y="167" text-anchor="middle" font-size="13" fill="#e6edf3" font-weight="600">WebSocket</text>
+  <text x="480" y="185" text-anchor="middle" font-size="11" fill="#8b949e">live cache events</text>
+
+  <rect x="580" y="140" width="160" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="660" y="167" text-anchor="middle" font-size="13" fill="#e6edf3" font-weight="600">Kafka / Pulsar</text>
+  <text x="660" y="185" text-anchor="middle" font-size="11" fill="#8b949e">factor change streams</text>
+
+  <!-- Arrows down to routing layer -->
+  <path d="M 660 200 L 660 250" stroke="#58a6ff" stroke-width="2" fill="none" marker-end="url(#arrowblue)"/>
+
+  <!-- ============================== -->
+  <!--   LAYER 2: ROUTING CORE         -->
+  <!-- ============================== -->
+  <text x="40" y="240" font-size="13" font-weight="700" fill="#58a6ff" letter-spacing="1">② ROUTING CORE (Rust + tokio)</text>
+
+  <defs>
+    <marker id="arrowblue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrowgreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#3fb950"/>
+    </marker>
+    <marker id="arroworange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#f0883e"/>
+    </marker>
+    <marker id="arrowred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#f85149"/>
+    </marker>
+  </defs>
+
+  <rect x="280" y="260" width="800" height="100" rx="10" fill="#1a1f29" stroke="#58a6ff" stroke-width="2"/>
+  <text x="680" y="285" text-anchor="middle" font-size="16" fill="#e6edf3" font-weight="700">CausalRouter · route(query)</text>
+  <text x="680" y="305" text-anchor="middle" font-size="11" fill="#8b949e">1. Embed → 2. L1+L2 lookup → 3. Precondition validate → 4. Causal score → 5. Rerank → 6. Decide</text>
+  <text x="680" y="325" text-anchor="middle" font-size="11" fill="#56d364">✅ HIT  → return cached response</text>
+  <text x="680" y="345" text-anchor="middle" font-size="11" fill="#f85149">❌ MISS → caller recomputes + insert_with_preconditions()</text>
+
+  <!-- ============================== -->
+  <!--   LAYER 3: CACHE + GRAPH         -->
+  <!-- ============================== -->
+  <text x="40" y="410" font-size="13" font-weight="700" fill="#58a6ff" letter-spacing="1">③ CACHE & GRAPH LAYER</text>
+
+  <!-- L1/L2 cache -->
+  <rect x="40" y="430" width="280" height="200" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="180" y="455" text-anchor="middle" font-size="14" fill="#3fb950" font-weight="600">Semantic Cache</text>
+  <line x1="60" y1="465" x2="300" y2="465" stroke="#30363d" stroke-width="1"/>
+
+  <text x="180" y="490" text-anchor="middle" font-size="12" fill="#e6edf3" font-weight="500">L1 · exact match</text>
+  <text x="180" y="508" text-anchor="middle" font-size="11" fill="#8b949e">dict[hash → entry]  LRU</text>
+
+  <text x="180" y="535" text-anchor="middle" font-size="12" fill="#e6edf3" font-weight="500">L2 · FAISS/LanceDB</text>
+  <text x="180" y="553" text-anchor="middle" font-size="11" fill="#8b949e">dense embedding + IVFPQ</text>
+  <text x="180" y="568" text-anchor="middle" font-size="11" fill="#8b949e">↑ reranked by cross-encoder</text>
+
+  <text x="180" y="595" text-anchor="middle" font-size="12" fill="#e6edf3" font-weight="500">L3 · causal-only</text>
+  <text x="180" y="613" text-anchor="middle" font-size="11" fill="#8b949e">shared causal factors</text>
+
+  <!-- Arrow from router to cache -->
+  <path d="M 480 290 L 480 410 L 320 410 L 320 480" stroke="#3fb950" stroke-width="2" fill="none" marker-end="url(#arrowgreen)"/>
+
+  <!-- Causal Graph -->
+  <rect x="340" y="430" width="280" height="200" rx="10" fill="#161b22" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="480" y="455" text-anchor="middle" font-size="14" fill="#f0883e" font-weight="600">Causal Graph (DAG)</text>
+  <line x1="360" y1="465" x2="600" y2="465" stroke="#30363d" stroke-width="1"/>
+
+  <circle cx="430" cy="510" r="22" fill="#21262d" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="430" y="515" text-anchor="middle" font-size="10" fill="#e6edf3">Q:A</text>
+
+  <circle cx="540" cy="510" r="22" fill="#21262d" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="540" y="515" text-anchor="middle" font-size="10" fill="#e6edf3">Q:B</text>
+
+  <circle cx="380" cy="580" r="22" fill="#21262d" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="380" y="585" text-anchor="middle" font-size="9" fill="#e6edf3">PC</text>
+
+  <circle cx="490" cy="580" r="22" fill="#21262d" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="490" y="585" text-anchor="middle" font-size="9" fill="#e6edf3">PC</text>
+
+  <circle cx="600" cy="580" r="22" fill="#21262d" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="600" y="585" text-anchor="middle" font-size="9" fill="#e6edf3">CF</text>
+
+  <line x1="408" y1="510" x2="518" y2="510" stroke="#30363d"/>
+  <line x1="430" y1="532" x2="380" y2="558" stroke="#30363d"/>
+  <line x1="430" y1="532" x2="490" y2="558" stroke="#30363d"/>
+  <line x1="540" y1="532" x2="490" y2="558" stroke="#30363d"/>
+  <line x1="380" y1="602" x2="600" y2="602" stroke="#30363d"/>
+  <line x1="380" y1="602" x2="490" y2="602" stroke="#30363d"/>
+  <line x1="490" y1="602" x2="600" y2="602" stroke="#30363d"/>
+
+  <text x="480" y="623" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">networkx · Neo4j adapter</text>
+
+  <!-- Arrow from router to graph -->
+  <path d="M 680 360 L 680 410 L 510 410 L 510 430" stroke="#f0883e" stroke-width="2" fill="none" marker-end="url(#arroworange)"/>
+
+  <!-- Predictive Invalidation -->
+  <rect x="640" y="430" width="280" height="200" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="1.5"/>
+  <text x="780" y="455" text-anchor="middle" font-size="14" fill="#a371f7" font-weight="600">Predictive Invalidation</text>
+  <line x1="660" y1="465" x2="900" y2="465" stroke="#30363d" stroke-width="1"/>
+
+  <text x="780" y="490" text-anchor="middle" font-size="11" fill="#e6edf3">⏱ Temporal volatility tracking</text>
+  <text x="780" y="510" text-anchor="middle" font-size="11" fill="#e6edf3">📈 EMA factor change frequency</text>
+  <text x="780" y="530" text-anchor="middle" font-size="11" fill="#e6edf3">🔮 Predicts: when entry expires</text>
+  <text x="780" y="555" text-anchor="middle" font-size="11" fill="#e6edf3">🌊 Cascading invalidation</text>
+  <text x="780" y="572" text-anchor="middle" font-size="11" fill="#8b949e">graph.find_dependents(key) → </text>
+  <text x="780" y="586" text-anchor="middle" font-size="11" fill="#8b949e">cache.invalidate_many(ids)</text>
+
+  <text x="780" y="610" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">crates/rl-invalidator (PPO)</text>
+
+  <!-- ============================== -->
+  <!--   LAYER 4: INTELLIGENCE LAYER    -->
+  <!-- ============================== -->
+  <text x="40" y="680" font-size="13" font-weight="700" fill="#58a6ff" letter-spacing="1">④ INTELLIGENCE LAYER</text>
+
+  <!-- Embedding -->
+  <rect x="40" y="700" width="200" height="100" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="140" y="725" text-anchor="middle" font-size="13" fill="#58a6ff" font-weight="600">Embedding Engine</text>
+  <text x="140" y="748" text-anchor="middle" font-size="10" fill="#8b949e">SentenceTransformer</text>
+  <text x="140" y="764" text-anchor="middle" font-size="10" fill="#8b949e">OpenAI ada-002</text>
+  <text x="140" y="780" text-anchor="middle" font-size="10" fill="#8b949e">Cohere embed-v3</text>
+  <text x="140" y="796" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">384-d · 1536-d · …</text>
+
+  <!-- Reranker -->
+  <rect x="260" y="700" width="200" height="100" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="360" y="725" text-anchor="middle" font-size="13" fill="#58a6ff" font-weight="600">Cross-Encoder Reranker</text>
+  <text x="360" y="748" text-anchor="middle" font-size="10" fill="#8b949e">ms-marco-MiniLM-L-6</text>
+  <text x="360" y="764" text-anchor="middle" font-size="10" fill="#8b949e">bge-reranker-base</text>
+  <text x="360" y="780" text-anchor="middle" font-size="10" fill="#8b949e">Top-K from L2 → rerank</text>
+  <text x="360" y="796" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">~50ms · 80MB</text>
+
+  <!-- PC Algorithm -->
+  <rect x="480" y="700" width="200" height="100" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="580" y="725" text-anchor="middle" font-size="13" fill="#58a6ff" font-weight="600">PC Algorithm</text>
+  <text x="580" y="748" text-anchor="middle" font-size="10" fill="#8b949e">partial correlation</text>
+  <text x="580" y="764" text-anchor="middle" font-size="10" fill="#8b949e">+ Fisher-z test</text>
+  <text x="580" y="780" text-anchor="middle" font-size="10" fill="#8b949e">cond. independence</text>
+  <text x="580" y="796" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">skeleton discovery</text>
+
+  <!-- Causal Discovery -->
+  <rect x="700" y="700" width="200" height="100" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="800" y="725" text-anchor="middle" font-size="13" fill="#58a6ff" font-weight="600">Causal Discovery</text>
+  <text x="800" y="748" text-anchor="middle" font-size="10" fill="#8b949e">PC algorithm</text>
+  <text x="800" y="764" text-anchor="middle" font-size="10" fill="#8b949e">+ DoWhy / gCastle</text>
+  <text x="800" y="780" text-anchor="middle" font-size="10" fill="#8b949e">observes each query</text>
+  <text x="800" y="796" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">finds new factors</text>
+
+  <!-- RL Invalidation -->
+  <rect x="920" y="700" width="200" height="100" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="1020" y="725" text-anchor="middle" font-size="13" fill="#58a6ff" font-weight="600">RL Agent (PPO)</text>
+  <text x="1020" y="748" text-anchor="middle" font-size="10" fill="#8b949e">policy: invalidate</text>
+  <text x="1020" y="764" text-anchor="middle" font-size="10" fill="#8b949e">+ early refresh</text>
+  <text x="1020" y="780" text-anchor="middle" font-size="10" fill="#8b949e">reward: hit × π_correct</text>
+  <text x="1020" y="796" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">−stale × 10</text>
+
+  <!-- Telemetry -->
+  <rect x="1140" y="700" width="220" height="100" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="1250" y="725" text-anchor="middle" font-size="13" fill="#58a6ff" font-weight="600">Observability</text>
+  <text x="1250" y="748" text-anchor="middle" font-size="10" fill="#8b949e">Prometheus metrics</text>
+  <text x="1250" y="764" text-anchor="middle" font-size="10" fill="#8b949e">OpenTelemetry traces</text>
+  <text x="1250" y="780" text-anchor="middle" font-size="10" fill="#8b949e">structured JSON logs</text>
+  <text x="1250" y="796" text-anchor="middle" font-size="10" fill="#8b949e" font-style="italic">/metrics · /healthz</text>
+
+  <!-- Arrows from intelligence up to router -->
+  <path d="M 140 700 L 140 660 L 550 660 L 550 360" stroke="#58a6ff" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arrowblue)"/>
+  <path d="M 360 700 L 360 660 L 580 660 L 580 360" stroke="#58a6ff" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arrowblue)"/>
+  <path d="M 580 700 L 580 660 L 650 660 L 650 360" stroke="#58a6ff" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arrowblue)"/>
+  <path d="M 800 700 L 800 660 L 720 660 L 720 360" stroke="#58a6ff" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arrowblue)"/>
+  <path d="M 780 530 L 780 360" stroke="#a371f7" stroke-width="2" fill="none" marker-end="url(#arrowred)"/>
+  <path d="M 1020 700 L 1020 660 L 820 660 L 820 360" stroke="#58a6ff" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arrowblue)"/>
+
+  <!-- BOTTOM: invalidation cascade example -->
+  <rect x="40" y="810" width="1320" height="70" rx="10" fill="#1a1f29" stroke="#f85149" stroke-width="1.5"/>
+  <text x="60" y="835" font-size="12" fill="#f85149" font-weight="700">INTEGRATION SCENARIO  · factor exchange_rate_usd_jpy changes</text>
+
+  <text x="60" y="855" font-size="11" fill="#e6edf3">1. Kafka streams factor change →  2. router.precondition_changed()  →  3. graph.find_dependents() returns ["Q:A", "Q:B"]  →  4. cache.invalidate_many() flushes L1+L2+F</text>
+  <text x="60" y="872" font-size="11" fill="#8b949e" font-style="italic">Net: zero stale-data returns. Caller redoes work, re-caches with new precondition value. Confidence restored.</text>
+
+</svg>
