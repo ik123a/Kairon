@@ -1,0 +1,26 @@
+line-length = 100
+target-version = "py310"
+
+[lint]
+# Sane defaults for Kairon's codebase
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (we use 100 but accept some leniency)
+    "B008",  # argument default in call — we use this pattern intentionally
+    "B904",  # raise without from — some legacy code
+]
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["E402"]  # imports after code in tests
+"examples/**/*.py" = ["E402", "E501"]  # examples are more lenient
+
+[format]
+quote-style = "double"
+indent-style = "space"
