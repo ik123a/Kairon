@@ -22,6 +22,52 @@
 
 *[Direct link to raw SVG](docs/architecture.svg) — renders natively on GitHub*
 
+```mermaid
+flowchart TB
+    subgraph CLIENT["① Client Layer"]
+        direction LR
+        A1["RAG / LLM App<br/><i>LangChain / LlamaIndex</i>"]
+        A2["REST / gRPC<br/><i>/query /insert /invalidate</i>"]
+        A3["WebSocket<br/><i>live cache events</i>"]
+        A4["Kafka / Pulsar<br/><i>factor change streams</i>"]
+    end
+
+    subgraph ROUTING["② Routing Core (Python)"]
+        B["CausalRouter · route(query)<br/><i>1. Embed → 2. L1+L2 lookup → 3. Precondition validate → 4. Causal score → 5. Rerank → 6. Decide</i><br/><b>✅ HIT</b> → return cached response<br/><b>❌ MISS</b> → caller recomputes + insert_with_preconditions()"]
+    end
+
+    subgraph CACHEGRAPH["③ Cache & Graph Layer"]
+        C1["Semantic Cache<br/><b>L1</b> · exact match, LRU<br/><b>L2</b> · FAISS/LanceDB, IVFPQ<br/><b>L3</b> · causal-only shared factors"]
+        C2["Causal Graph (DAG)<br/><i>networkx · Neo4j adapter</i>"]
+        C3["Predictive Invalidation<br/><i>⏱ Temporal volatility tracking<br/>📈 EMA factor change frequency<br/>🔮 Predict entry expiry<br/>🌊 Cascading invalidation</i>"]
+    end
+
+    subgraph INTELLIGENCE["④ Intelligence Layer"]
+        D1["Embedding Engine<br/><i>SentenceTransformer<br/>OpenAI ada-002<br/>Cohere embed-v3</i>"]
+        D2["Cross-Encoder Reranker<br/><i>ms-marco-MiniLM-L-6<br/>bge-reranker-base<br/>Top-K from L2 → rerank</i>"]
+        D3["PC Algorithm<br/><i>partial correlation<br/>+ Fisher-z test<br/>skeleton discovery</i>"]
+        D4["Causal Discovery<br/><i>PC algorithm<br/>+ DoWhy / gCastle<br/>finds new factors</i>"]
+        D5["RL Agent (PPO)<br/><i>policy: early refresh<br/>reward: +hit −stale×10</i>"]
+        D6["Observability<br/><i>Prometheus metrics<br/>OpenTelemetry traces<br/>structured JSON logs</i>"]
+    end
+
+    subgraph BOTTOM["Integration Scenario"]
+        E["<b>Factor exchange_rate_usd_jpy changes</b><br/>1. Kafka streams factor change → 2. router.precondition_changed() → 3. graph.find_dependents() returns ['Q:A', 'Q:B'] → 4. cache.invalidate_many() flushes L1+L2+L3<br/><i>Net: zero stale-data returns. Caller redoes work, re-caches with new precondition value.</i>"]
+    end
+
+    CLIENT --> ROUTING
+    ROUTING --> CACHEGRAPH
+    CACHEGRAPH --> INTELLIGENCE
+    INTELLIGENCE -.-> ROUTING
+    BOTTOM --> CACHEGRAPH
+
+    style CLIENT fill:#1a1f29,stroke:#58a6ff,color:#e6edf3
+    style ROUTING fill:#1a1f29,stroke:#58a6ff,color:#e6edf3
+    style CACHEGRAPH fill:#1a1f29,stroke:#3fb950,color:#e6edf3
+    style INTELLIGENCE fill:#1a1f29,stroke:#a371f7,color:#e6edf3
+    style BOTTOM fill:#161b22,stroke:#f85149,color:#e6edf3
+```
+
 ---
 
 ## What’s New in v0.3.0
