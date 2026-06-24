@@ -10,6 +10,20 @@
 
 ---
 
+## What’s New in v0.5.0
+
+- 📐 **Architecture diagram** — full system visualization in `docs/architecture.svg` (4 layers, 21 components)
+- 📝 **Launch blog post** — `docs/blog/2026-06-causal-cache.md` (4,800 words for dev.to / Medium)
+- 💬 **HN submission pack** — `docs/blog/hn-comment-pack.md` (title + opening comment + 4 prepared replies)
+- 📦 **PyPI-ready package** — `kairon-cache`, installable via `pip install kairon-cache`
+- 🧪 **RAG evaluation** — `examples/rag_eval.py` on natural paraphrased questions
+
+![Architecture diagram — Kairon v0.5.0 system overview](docs/architecture.svg)
+
+*[Direct link to raw SVG](docs/architecture.svg) — renders natively on GitHub*
+
+---
+
 ## What’s New in v0.3.0
 
 - 🎯 **Cross-encoder reranker** — L2 semantic hits are now re-ranked by `cross-encoder/ms-marco-MiniLM-L-6-v2` (sentence-transformers). This eliminates cross-subject false positives that bi-encoder cosine similarity couldn't distinguish.
@@ -37,6 +51,28 @@ Every existing semantic cache matches queries by **similarity** — "What is 2+2
 
 When a cached result's **underlying assumptions change**, a normal semantic cache will happily return **stale, incorrect data**. Kairon prevents this.
 
+## Architecture
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │     RAG / LLM App (LangChain, etc)     │
+                    └────────────────────┬────────────────────┘
+                                         ▼
+              ┌──────────────────────────┴──────────────────────────┐
+              │         Kairon CausalRouter · route(query)         │
+              │  Embed → L1 → L2 → Precheck → CausalScore → Decide│
+              └───────┬──────────────────────┬───────────────────┘
+                      ▼                      ▼                      ▼
+        ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────┐
+        │ SemanticCache        │  │ CausalGraph (DAG)    │  │ Predictive       │
+        │ L1 exact · L2 FAISS  │  │ Queries, Responses,  │  │ Invalidation     │
+        │ L3 causal-only       │  │ Preconditions,      │  │ Temporal + EMA   │
+        │ + Cross-encoder RI   │  │ Causal Factors      │  │ + RL agent       │
+        └──────────────────────┘  └──────────────────────┘  └──────────────────┘
+```
+
+Full SVG architecture diagram: [docs/architecture.svg](docs/architecture.svg).
+
 ## The Innovation: Causal Fingerprints
 
 Instead of caching `(query_embedding → response)`, Kairon caches:
@@ -54,8 +90,19 @@ When a new query arrives, Kairon:
 ## Quick Start
 
 ```bash
-# Install
+# Option 1: Install from PyPI (recommended)
+pip install kairon-cache
+
+# Option 2: Install from source (development)
+git clone https://github.com/ik123a/Kairon.git
+cd Kairon
 pip install -e .
+
+# Optional installs
+pip install "kairon-cache[embeddings]"        # SentenceTransformer (real semantic)
+pip install "kairon-cache[vector-backends]"   # LanceDB
+pip install "kairon-cache[graph-backends]"    # Neo4j
+pip install "kairon-cache[all]"               # everything
 
 # Run the demo (hash embeddings, ~5 seconds)
 python examples/demo.py
@@ -68,44 +115,27 @@ python examples/demo.py --engine sentence-transformer
 python tests/test_benchmark.py                          # hash embeddings
 python tests/test_benchmark.py --real-embeddings        # sentence-transformer embeddings
 
+# Run RAG-style evaluation on natural paraphrased questions
+python examples/rag_eval.py
+
 # Run unit tests
 pytest tests/test_core.py -v
 ```
 
-## Architecture
+## Results
 
-```
-┌─────────────────────────────────────────────┐
-│              Kairon Gateway (FastAPI)        │
-│   REST API + gRPC (future)                  │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│              Causal Router                   │
-│  ┌──────────┐  ┌──────────┐  ┌────────────┐ │
-│  │ Semantic │──│  Causal  │──│Precondition│ │
-│  │ Encoder  │  │ Matcher  │  │ Validator  │ │
-│  └──────────┘  └──────────┘  └────────────┘ │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│             Cache Tiers                     │
-│  L1: Exact hash (dict)    — <1ms           │
-│  L2: Semantic (FAISS)     — <5ms           │
-│  L3: Causal-only fallback — <50ms          │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│        Causal Engine (background)           │
-│  ┌──────────┐  ┌──────────┐  ┌────────────┐│
-│  │ Causal   │──│Predictive│──│  Cache     ││
-│  │Discovery │  │Invalid.  │  │  Warming   ││
-│  └──────────┘  └──────────┘  └────────────┘│
-└─────────────────────────────────────────────┘
-```
+Benchmark vs a naive semantic cache on 5,000 queries (Kairon with cross-encoder reranker):
+
+| Factor volatility | Naive accuracy | **Kairon accuracy** | Kairon stale rate |
+|---|---|---|---|
+| 2% factor flips  | 99.5% | **100%** | 0% |
+| 8% factor flips  | 38%   | **100%** | 0% |
+| 20% factor flips | 8%    | **100%** | 0% |
+| 40% factor flips | 4%    | **100%** | 0% |
+
+Kairon's hit rate **drops** at high volatility, but its accuracy stays at 100%. A naive cache at 40% volatility returns *wrong answers with 100% confidence, every hit*. Kairon trades hit rate for correctness.
+
+> See [docs/blog/2026-06-causal-cache.md](docs/blog/2026-06-causal-cache.md) for the full write-up.
 
 ## Key Features
 
@@ -238,10 +268,12 @@ kairon/
 - [x] **v0.3.0** Cross-encoder reranker for L2 (precision boost)
 - [x] **v0.3.0** PC algorithm for statistical causal discovery
 - [x] **v0.3.0** Pluggable storage backends (LanceDB + Neo4j adapter scaffolds)
-- [ ] **v0.4.0** Rust core engine (tokio, tonic, lancedb)
-- [ ] **v0.4.0** Neo4j live integration tests
-- [ ] **v0.4.0** RL-based invalidation policy (PPO/SAC)
-- [ ] **v0.5.0** gRPC + Kafka streaming
+- [x] **v0.4.0** PyPI-ready package + RAG eval + py.typed
+- [x] **v0.5.0** Architecture diagram + launch blog post + HN submission pack
+- [ ] **v0.4.1** Rust core engine (tokio, tonic, lancedb)
+- [ ] **v0.4.1** Neo4j live integration tests
+- [ ] **v0.4.1** RL-based invalidation policy (PPO/SAC)
+- [ ] **v0.6.0** gRPC + Kafka streaming
 - [ ] **v0.6.0** Kubernetes + Istio deployment
 - [ ] **v0.7.0** Federated causal learning
 - [ ] **v0.8.0** Multi-modal causal fingerprints
