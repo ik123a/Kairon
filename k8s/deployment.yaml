@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kairon-service
+  namespace: default
+  labels:
+    app: kairon
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kairon
+  template:
+    metadata:
+      labels:
+        app: kairon
+    spec:
+      containers:
+      - name: kairon
+        image: ik123a/kairon:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        environment:
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        healthCheck: # wait, the standard field is livenessProbe / readinessProbe in k8s!
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kairon-service
+  namespace: default
+  labels:
+    app: kairon
+spec:
+  selector:
+    app: kairon
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP
