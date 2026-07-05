@@ -331,6 +331,34 @@ kairon/
 * **Causal discovery heuristics** — In addition to the new PC algorithm, simpler heuristic discovery remains for low-data scenarios. Use heuristic with `n_observations < 50`; switch to PC at scale.
 * **Causal graph cross-system isolation** — Entries from different tenants should use disjoint causal factor namespaces.
 
+## 🐳 Docker & Kubernetes Deployment
+
+### Running with Docker Compose
+You can run the FastAPI-based Kairon caching service in a containerized environment:
+
+1. **Build and start the container**:
+   ```bash
+   docker compose up -d --build
+   ```
+2. **Access the service**:
+   The service listens on port `8080`. You can query the health endpoint:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+### Deploying to Kubernetes
+Kubernetes manifests are located in the `k8s/` directory.
+
+1. **Deploy to your cluster**:
+   ```bash
+   kubectl apply -f k8s/deployment.yaml
+   ```
+2. **Access the service**:
+   The cache runs as a `ClusterIP` service. Port-forward to access it locally:
+   ```bash
+   kubectl port-forward svc/kairon-service 8080:8080
+   ```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
