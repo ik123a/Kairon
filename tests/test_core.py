@@ -118,6 +118,130 @@ class TestModels:
 
 
 class TestSemanticCache:
+    @pytest.mark.parametrize("reuse_entry", [False, True])
+    def test_reinsert_replaces_semantic_vector(self, reuse_entry):
+        cache = SemanticCache(embedding_dim=2, l1_max_size=0)
+        old_vector = np.array([1.0, 0.0], dtype=np.float32)
+        new_vector = np.array([0.0, 1.0], dtype=np.float32)
+        entry = CachedEntry(query_text="service alpha status", response="old")
+        cache.insert(entry, old_vector)
+        updated = entry if reuse_entry else entry.model_copy()
+        updated.response = "new"
+
+        cache.insert(updated, new_vector)
+
+        results = cache.search_top_k(new_vector)
+        assert len(results) == 1
+        assert results[0][0].response == "new"
+        assert results[0][1] == pytest.approx(1.0)
+        assert cache.search_top_k(old_vector)[0][1] == pytest.approx(0.0)
+        assert cache.size == (0, 1)
+        assert cache.get(entry.query_text, old_vector) == (None, CacheTier.MISS)
+        hit, tier = cache.get(entry.query_text, new_vector)
+        assert tier == CacheTier.L2
+        assert hit.response == "new"
+        assert cache.invalidate(entry.id) is True
+        assert cache.size == (0, 0)
+
+    def test_reinsert_removes_previous_exact_query(self):
+        cache = SemanticCache(embedding_dim=2)
+        old_vector = np.array([1.0, 0.0], dtype=np.float32)
+        new_vector = np.array([0.0, 1.0], dtype=np.float32)
+        original = CachedEntry(query_text="service alpha status", response="old")
+        cache.insert(original, old_vector)
+        updated = CachedEntry(
+            id=original.id, query_text="weather beta forecast", response="new"
+        )
+
+        cache.insert(updated, new_vector)
+
+        assert cache.get(original.query_text, old_vector) == (None, CacheTier.MISS)
+        hit, tier = cache.get(updated.query_text, new_vector)
+        assert tier == CacheTier.L1
+        assert hit.response == "new"
+        assert cache.size == (1, 1)
+
+    def test_reinsert_rechecks_promoted_alias(self):
+        cache = SemanticCache(embedding_dim=2)
+        vector = np.array([1.0, 0.0], dtype=np.float32)
+        original = CachedEntry(query_text="service alpha status", response="old")
+        alias = "service alpha status report"
+        cache.insert(original, vector)
+        assert cache.get(alias, vector)[1] == CacheTier.L2
+        updated = original.model_copy(update={"response": "new"})
+
+        cache.insert(updated, vector)
+
+        hit, tier = cache.get(alias, vector)
+        assert hit.response == "new"
+        assert tier == CacheTier.L2
+        assert cache.get(alias, vector)[1] == CacheTier.L1
+
+    @pytest.mark.parametrize("max_size", [0, 1, 2])
+    def test_semantic_promotion_respects_l1_capacity(self, max_size):
+        cache = SemanticCache(embedding_dim=2, l1_max_size=max_size)
+        vector = np.array([1.0, 0.0], dtype=np.float32)
+        entry = CachedEntry(query_text="service alpha status", response="healthy")
+        cache.insert(entry, vector)
+
+        for suffix in ("report", "summary", "overview"):
+            hit, tier = cache.get(f"service alpha status {suffix}", vector)
+            assert tier == CacheTier.L2
+            assert hit.response == "healthy"
+            assert cache.size[0] <= max_size
+            assert cache.size[1] == 1
+
+    def test_semantic_promotion_evicts_least_recently_used_key(self):
+        cache = SemanticCache(embedding_dim=2, l1_max_size=2)
+        alpha_vector = np.array([1.0, 0.0], dtype=np.float32)
+        beta_vector = np.array([0.0, 1.0], dtype=np.float32)
+        alpha = CachedEntry(query_text="service alpha status", response="alpha")
+        beta = CachedEntry(query_text="service beta status", response="beta")
+        cache.insert(alpha, alpha_vector)
+        cache.insert(beta, beta_vector)
+        assert cache.get(alpha.query_text, alpha_vector)[1] == CacheTier.L1
+
+        assert cache.get("service alpha status report", alpha_vector)[1] == CacheTier.L2
+
+        assert cache.get(alpha.query_text, alpha_vector)[1] == CacheTier.L1
+        hit, tier = cache.get(beta.query_text, beta_vector)
+        assert tier == CacheTier.L2
+        assert hit.response == "beta"
+        assert cache.size == (2, 2)
+
+    def test_reinsert_refreshes_lru_position(self):
+        cache = SemanticCache(embedding_dim=2, l1_max_size=2)
+        vector = np.array([1.0, 0.0], dtype=np.float32)
+        first = CachedEntry(query_text="service first status", response="first")
+        second = CachedEntry(query_text="service second status", response="second")
+        third = CachedEntry(query_text="service third status", response="third")
+        cache.insert(first, vector)
+        cache.insert(second, vector)
+
+        cache.insert(first, vector)
+        cache.insert(third, vector)
+
+        assert cache.get(first.query_text, vector)[1] == CacheTier.L1
+        assert cache.get(second.query_text, vector)[1] == CacheTier.L2
+        assert cache.size == (2, 3)
+
+    def test_rejected_replacement_preserves_cached_entry(self):
+        cache = SemanticCache(embedding_dim=2)
+        vector = np.array([1.0, 0.0], dtype=np.float32)
+        original = CachedEntry(query_text="service alpha status", response="old")
+        cache.insert(original, vector)
+        invalid = CachedEntry(id=original.id, query_text="other query", response="invalid")
+
+        with pytest.raises((AssertionError, ValueError)):
+            cache.insert(invalid, np.array([1.0, 0.0, 0.0], dtype=np.float32))
+
+        hit, tier = cache.get(original.query_text, vector)
+        assert tier == CacheTier.L1
+        assert hit.response == "old"
+        assert cache.size == (1, 1)
+        assert cache.search_top_k(vector)[0][1] == pytest.approx(1.0)
+        assert invalid.query_embedding is None
+
     def test_exact_hit(self, cache, embed_engine):
         entry = CachedEntry(query_text="hello", response="world")
         cache.insert(entry, embed_engine.embed("hello"))

@@ -164,8 +164,9 @@ python tests/test_benchmark.py --real-embeddings        # sentence-transformer e
 # Run RAG-style evaluation on natural paraphrased questions
 python examples/rag_eval.py
 
-# Run unit tests
-pytest tests/test_core.py -v
+# Run the full test suite (no embedding models or API credentials needed)
+pip install -e ".[dev]"
+python -m pytest -q
 ```
 
 ## Results
@@ -230,6 +231,18 @@ engine.predict_validity_window(entry)  # → seconds until invalid
 invalidated = router.precondition_changed("exchange_rate_usd_jpy", "110.5", "112.0")
 # → All entries depending on this factor are invalidated in cascade
 ```
+
+### In-memory cache updates
+
+`SemanticCache.insert(entry, embedding)` replaces an existing entry with the same
+`CachedEntry.id`, including its FAISS vector. Previous exact-query keys and aliases
+learned from semantic hits are removed; subsequent queries must match the updated
+entry again. Reinserting an entry keeps one L2 vector for that ID.
+
+`l1_max_size` limits all L1 query keys, including aliases promoted from L2. Both
+inserts and promotions refresh LRU order and evict the least recently used key.
+Setting it to `0` disables L1 storage while retaining L2 lookup. L1 eviction does
+not remove the corresponding L2 entry.
 
 ## REST API
 

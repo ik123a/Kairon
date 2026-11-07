@@ -78,7 +78,7 @@ class SemanticCache:
     # ------------------------------------------------------------------
 
     def insert(self, entry: CachedEntry, embedding: np.ndarray | None = None):
-        """Insert a cached entry into both L1 and L2 (skipping duplicates)."""
+        """Insert or replace an entry by ID, removing its previous L1 aliases."""
         # If no embedding provided, use the entry's stored embedding
         if embedding is None and entry.query_embedding:
             embedding = np.array(entry.query_embedding, dtype=np.float32)
@@ -93,31 +93,18 @@ class SemanticCache:
         # Normalize for cosine similarity
         faiss.normalize_L2(embedding)
 
-        # Store embedding on entry
-        entry.query_embedding = embedding.flatten().tolist()
-
-        # L1: exact hash key — always promote/update
-        key = self._exact_key(entry.query_text)
-        self._l1[key] = entry
-        if len(self._l1) > self.l1_max_size:
-            self._l1.popitem(last=False)  # LRU eviction
-
-        # L2: FAISS vector index — check for existing entry to avoid duplicates
-        existing_idx = None
-        for existing_idx_candidate, existing_entry in self._l2_entries.items():
-            if existing_entry.id == entry.id:
-                existing_idx = existing_idx_candidate
-                break
-        if existing_idx is not None:
-            # Already in L2 — only refresh the in-memory entry object (FAISS vector stays)
-            self._l2_entries[existing_idx] = entry
-            return
-
+        # Add first so a rejected vector does not discard the previous entry.
         idx = self._next_id
-        self._next_id += 1
         faiss_id = np.array([idx], dtype=np.int64)
         self._l2_index.add_with_ids(embedding, faiss_id)
+        self._next_id += 1
+
+        # The new vector is not registered yet, so only old vectors and aliases
+        # for this entry ID are removed.
+        self.invalidate(entry.id)
+        entry.query_embedding = embedding.flatten().tolist()
         self._l2_entries[idx] = entry
+        self._promote_to_l1(entry.query_text, entry)
 
     # ------------------------------------------------------------------
     # Lookup
@@ -168,7 +155,7 @@ class SemanticCache:
                         entry, score = candidates[r.index]
                         entry.record_access()
                         # Promote to L1
-                        self._l1[self._exact_key(query_text)] = entry
+                        self._promote_to_l1(query_text, entry)
                         self._hit_count += 1
                         return entry, CacheTier.L2
 
@@ -267,6 +254,13 @@ class SemanticCache:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _promote_to_l1(self, query_text: str, entry: CachedEntry):
+        key = self._exact_key(query_text)
+        self._l1[key] = entry
+        self._l1.move_to_end(key)
+        while self._l1 and len(self._l1) > self.l1_max_size:
+            self._l1.popitem(last=False)
 
     @staticmethod
     def _exact_key(query: str) -> str:
